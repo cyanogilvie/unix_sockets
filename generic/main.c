@@ -7,16 +7,53 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+
+/* Tcl 9 removed CONST* macros entirely. I'm redefining them here
+  for the unlikely corner case where Tcl8 was build with USE_NON_CONST.
+  These definitions are needed in uds.h unless CONST symbols are dropped */
+
+#ifndef CONST
+#  define CONST const
+#endif
+#ifndef CONST84
+#  define CONST84 const
+#endif
+#ifndef CONST86
+#  define CONST86 const
+#endif
+#ifndef CONST84_RETURN
+#  define CONST84_RETURN const
+#endif
+
 #include "uds.h"
 #include "config.h"
 
 //#include <sys/ioctl.h>
 
+/* tcl_const_compat.h */
+#include <tcl.h>
+
+#ifndef TCL_SIZE_MAX
+# define Tcl_GetSizeIntFromObj Tcl_GetIntFromObj
+# define TCL_SIZE_MAX      INT_MAX
+# ifndef Tcl_Size
+    typedef int Tcl_Size;
+# endif
+# define TCL_SIZE_MODIFIER ""
+#endif
+
+static int close2Proc(void* cdata, Tcl_Interp* interp, int flags);
+
+#if TCL_MAJOR_VERSION >= 9
+#  define UNIX_SOCKET_CLOSEPROC  NULL
+#else
+#  define UNIX_SOCKET_CLOSEPROC  TCL_CLOSE2PROC
+#endif
 
 static Tcl_ChannelType unix_socket_channel_type = {
 	"unix_socket",
-	TCL_CHANNEL_VERSION_2,
-	closeProc,
+	TCL_CHANNEL_VERSION_5,
+	UNIX_SOCKET_CLOSEPROC,
 	inputProc,
 	outputProc,
 	NULL,	//seekProc				// NULLable
@@ -24,7 +61,7 @@ static Tcl_ChannelType unix_socket_channel_type = {
 	NULL,	//getOptionProc			// NULLable
 	watchProc,
 	getHandleProc,
-	NULL,	//close2Proc			// NULLable
+	close2Proc,
 	blockModeProc,					// NULLable
 	NULL,	//flushProc				// NULLable
 	NULL,	//handlerProc			// NULLable
@@ -32,7 +69,6 @@ static Tcl_ChannelType unix_socket_channel_type = {
 	NULL,	//threadActionProc		// NULLable
 	NULL,	//truncateProc			// NULLable
 };
-
 
 typedef struct uds_state {
 	Tcl_Interp *	interp;
@@ -43,10 +79,8 @@ typedef struct uds_state {
 	Tcl_Obj *		path;
 } uds_state;
 
-
-static int closeProc(cdata, interp) //<<<
-	ClientData		cdata;
-	Tcl_Interp		*interp;
+//>>>
+static int close2Proc(ClientData cdata,Tcl_Interp* interp,int flags) //<<<
 {
 	uds_state *	con = (uds_state *)cdata;
 
@@ -72,11 +106,7 @@ static int closeProc(cdata, interp) //<<<
 }
 
 //>>>
-static int inputProc(cdata, buf, bufSize, errorCodePtr) //<<<
-	ClientData	cdata;
-	char		*buf;
-	int			bufSize;
-	int *		errorCodePtr;
+static int inputProc(ClientData cdata, char* buf, int bufSize, int* errorCodePtr) //<<<
 {
 	int			got;
 	uds_state *	con = (uds_state *)cdata;
@@ -90,11 +120,7 @@ static int inputProc(cdata, buf, bufSize, errorCodePtr) //<<<
 }
 
 //>>>
-static int outputProc(cdata, buf, toWrite, errorCodePtr) //<<<
-	ClientData		cdata;
-	const char *	buf;
-	int				toWrite;
-	int *			errorCodePtr;
+static int outputProc(ClientData cdata,const char* buf, int toWrite, int* errorCodePtr) //<<<
 {
 	int			wrote;
 	uds_state *	con = (uds_state *)cdata;
@@ -107,9 +133,7 @@ static int outputProc(cdata, buf, toWrite, errorCodePtr) //<<<
 }
 
 //>>>
-static int blockModeProc(cdata, mode) //<<<
-	ClientData		cdata;
-	int				mode;
+static int blockModeProc(ClientData cdata,int mode) //<<<
 {
 	uds_state *	con = (uds_state *)cdata;
 	int			flags, err;
@@ -139,9 +163,7 @@ static int blockModeProc(cdata, mode) //<<<
 }
 
 //>>>
-static void watchProc(cdata, mask) //<<<
-	ClientData		cdata;
-	int				mask;
+static void watchProc(ClientData cdata, int mask) //<<<
 {
 	uds_state *	con = (uds_state *)cdata;
 
@@ -154,10 +176,7 @@ static void watchProc(cdata, mask) //<<<
 }
 
 //>>>
-static int getHandleProc(cdata, direction, handlePtr) //<<<
-	ClientData		cdata;
-	int				direction;
-	ClientData *	handlePtr;
+static int getHandleProc(ClientData cdata,int direction,ClientData* handlePtr) //<<<
 {
 	uds_state *	con = (uds_state *)cdata;
 
@@ -168,9 +187,7 @@ static int getHandleProc(cdata, direction, handlePtr) //<<<
 }
 
 //>>>
-static void accept_dispatcher(cdata, mask) //<<<
-	ClientData		cdata;
-	int				mask;
+static void accept_dispatcher(ClientData cdata,int mask) //<<<
 {
 	uds_state *			state = (uds_state *)cdata;
 	struct sockaddr_un	client_address;
@@ -220,16 +237,12 @@ static void accept_dispatcher(cdata, mask) //<<<
 }
 
 //>>>
-static int glue_listen(cdata, interp, objc, objv) //<<<
-	ClientData		cdata;
-	Tcl_Interp *	interp;
-	int				objc;
-	Tcl_Obj *CONST	objv[];
+static int glue_listen(ClientData cdata,Tcl_Interp* interp,int objc,Tcl_Obj *CONST objv[]) //<<<
 {
 	int					server_sockfd, server_len;
 	struct sockaddr_un	server_address;
 	char *				path;
-	int					path_len;
+	Tcl_Size			path_len;
 	uds_state *			state;
 	char				channel_name[64];
 	Tcl_Channel			channel;
@@ -274,17 +287,14 @@ static int glue_listen(cdata, interp, objc, objv) //<<<
 }
 
 //>>>
-static int glue_connect(cdata, interp, objc, objv) //<<<
-	ClientData		cdata;
-	Tcl_Interp *	interp;
-	int				objc;
-	Tcl_Obj *CONST	objv[];
+static int glue_connect(ClientData cdata,Tcl_Interp* interp,int objc,Tcl_Obj *CONST objv[]) //<<<
 {
 	Tcl_Channel			channel;
 	int					fd;
 	char				channel_name[64];
 	char *				path;
-	int					path_len, result;
+	Tcl_Size			path_len;
+    int                 result;
 	struct sockaddr_un	address;
 	int					sockaddr_len;
 	uds_state *			con;
@@ -304,8 +314,10 @@ static int glue_connect(cdata, interp, objc, objv) //<<<
 	sockaddr_len = sizeof(address);
 	result = connect(fd, (struct sockaddr *)&address, sockaddr_len);
 	if (result == -1)
-		THROW_ERROR("Could not connect to unix socket: \"", path, "\"");
-
+    {
+        int error_code = errno;
+		THROW_ERROR("Could not connect to unix socket: \"", path, "\"", "(", strerror(error_code), ")");
+    }
 	sprintf(channel_name, "unix_socket%d", fd);
 
 	con = (uds_state *)ckalloc(sizeof(uds_state));
@@ -331,8 +343,11 @@ static int glue_connect(cdata, interp, objc, objv) //<<<
 //>>>
 int Unix_sockets_Init(Tcl_Interp *interp) //<<<
 {
-	if (Tcl_InitStubs(interp, "8.2", 0) == NULL)
+    /* Notice that the upper bound is exclusive */
+	if (Tcl_InitStubs(interp, "8.2-10", 0) == NULL)
+    {
 		return TCL_ERROR;
+    }
 
 	NEW_CMD("unix_sockets::listen", glue_listen);
 	NEW_CMD("unix_sockets::connect", glue_connect);

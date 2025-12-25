@@ -1,0 +1,12 @@
+2025-12-24 Massimo Manghi <massimo.manghi@rivetweb.org>
+    * generic/main.c: Defining CONST compatibility layer needed
+    by function declarations in generic/uds.h. Old style function
+    declaration changed following modern C language coding styles.
+    Add compatibility layer for the Tcl channel version. Add also
+    compatibility definition of Tcl_Size for builds with Tcl 8.6
+
+2024-10-25 Massimo Manghi <massimo.manghi@rivetweb.org>
+	* ChangeLog: add ChangeLog file
+	* generic/main.c: calling strerror to get a readable reason for
+	a connection error
+

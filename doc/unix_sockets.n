@@ -39,7 +39,9 @@ A simple server that echos back to the client the first line it sends, then
 closes the socket:
 .PP
 .CS
-\fBproc readable {con} {
+\fBpackage require unix_sockets
+
+proc readable {con} {
     set msg [gets $con]
     puts $con $msg
     close $con
